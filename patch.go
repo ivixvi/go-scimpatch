@@ -79,7 +79,9 @@ func ApplyPatch(patch Patch, subj *Resource, schema *Schema) (err error) {
 		return err
 	}
 
+	// PatchState
 	ps := *psPtr
+	// Path
 	path := *pathPtr
 
 	err = applyAzureADRemoveSupport(&ps, &path)
@@ -136,11 +138,30 @@ func buildPatchState(patch Patch, schema *Schema) (error, *patchState, *Path) {
 // そもそもgo-scimpatchはRFCに沿って作られたものであるため、こういうそもそもRFCに則ってないリクエストを受け付けるような動きにはなっていない。
 // したがって、このようなAzureADの動きに対応するようなグルーコードもどきを仕方なく作ることとなった。
 func applyAzureADRemoveSupport(ps *patchState, path *Path) error {
+	// Patch
 	patch := (*ps).patch
 
 	if ps.destAttr != nil {
+		// removeで複数属性でvalueに値があるとき
 		if strings.ToLower(patch.Op) == "remove" && ps.destAttr.MultiValued && patch.Value != nil {
+			/*
+				イメージこんな感じのことをしている処理
+				{
+					"op": "remove",
+					"path": "to.MultiValued"
+					"value": [{
+						"value": "deleteTarget"
+					}]
+				}
+					↓
+				{
+					"op": "remove",
+					"path": "to.MultiValued[value eq "deleteTarget"]"
+				}
+			*/
 			v := reflect.ValueOf(patch.Value)
+			// v := deleteTarget
+
 			if v.Kind() == reflect.Interface {
 				v = v.Elem()
 			}
