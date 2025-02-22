@@ -89,11 +89,13 @@ func ApplyPatch(patch Patch, subj *Resource, schema *Schema) (err error) {
 		return err
 	}
 
+	// v を reflect.Value で取り出す
 	v := reflect.ValueOf(patch.Value)
 	if v.Kind() == reflect.Interface {
 		v = v.Elem()
 	}
 
+	// それぞれの処理に流す
 	switch strings.ToLower(patch.Op) {
 	case Add:
 		ps.applyPatchAdd(path, fixValueWithType(ps.destAttr, v), subj)
@@ -256,10 +258,12 @@ func (ps *patchState) applyPatchRemove(p Path, subj *Resource) {
 	baseChannel := make(chan interface{}, 1)
 	if basePath == nil {
 		go func() {
+			// ベースパスの指定がなければ全部の属性を送信
 			baseChannel <- subj.Complex
 			close(baseChannel)
 		}()
 	} else {
+		// ベースパスがあれば、該当の箇所を取得
 		baseChannel = subj.Get(basePath, ps.sch)
 	}
 
@@ -268,6 +272,10 @@ func (ps *patchState) applyPatchRemove(p Path, subj *Resource) {
 		baseAttr = ps.sch.GetAttribute(basePath, true)
 	}
 
+	// channelに対するrangeはchannelがcloseするまで、受信データに対して処理を行う
+	// cf. https://go-tour-jp.appspot.com/concurrency/2
+
+	// baseはsubjから取得しているので変更前のデータ
 	for base := range baseChannel {
 		baseVal := reflect.ValueOf(base)
 		if baseVal.IsNil() {
