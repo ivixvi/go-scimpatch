@@ -65,9 +65,9 @@ func ApplyPatch(patch Patch, subj *Resource, schema *Schema) (err error) {
 	// ApplyPatchから脱出する際にpanicになっていたら原因を元にerrorを返すための宣言
 	defer func() {
 		if r := recover(); r != nil {
-			switch r.(type) {
+			switch r := r.(type) {
 			case error:
-				err = r.(error)
+				err = r
 			default:
 				err = fmt.Errorf("%v", r)
 			}
