@@ -25,36 +25,36 @@ type Modification struct {
 
 func (m Modification) Validate() error {
 	if len(m.Schemas) != 1 && m.Schemas[0] != PatchOpUrn {
-		return fmt.Errorf("Invalid parameter: %+v", m.Schemas)
+		return fmt.Errorf("invalid parameter: %+v", m.Schemas)
 	}
 
 	if len(m.Ops) == 0 {
-		return fmt.Errorf("Invalid parameter: no ops")
+		return fmt.Errorf("invalid parameter: no ops")
 	}
 
 	for _, patch := range m.Ops {
 		switch strings.ToLower(patch.Op) {
 		case Add:
 			if patch.Value == nil {
-				return fmt.Errorf("Invalid parameter: value is not present")
+				return fmt.Errorf("invalid parameter: value is not present")
 			} else if len(patch.Path) == 0 {
 				if _, ok := patch.Value.(map[string]interface{}); !ok {
-					return fmt.Errorf("Invalid parameter: path is not present")
+					return fmt.Errorf("invalid parameter: path is not present")
 				}
 			}
 		case Replace:
 			if patch.Value == nil {
-				return fmt.Errorf("Invalid parameter: value is not present")
+				return fmt.Errorf("invalid parameter: value is not present")
 			} else if len(patch.Path) == 0 {
-				return fmt.Errorf("Invalid parameter: path is not present")
+				return fmt.Errorf("invalid parameter: path is not present")
 			}
 		case Remove:
 			if len(patch.Path) == 0 {
-				return fmt.Errorf("Invalid parameter: path is not present")
+				return fmt.Errorf("invalid parameter: path is not present")
 			}
 
 		default:
-			return fmt.Errorf("Invalid operation: must be one of [add|remove|replace]")
+			return fmt.Errorf("invalid operation: must be one of [add|remove|replace]")
 		}
 	}
 
@@ -104,7 +104,7 @@ func ApplyPatch(patch Patch, subj *Resource, schema *Schema) (err error) {
 	case Remove:
 		ps.applyPatchRemove(path, subj)
 	default:
-		err = fmt.Errorf("Invalid operator: %s", patch.Op)
+		err = fmt.Errorf("invalid operator: %s", patch.Op)
 	}
 	return
 }
@@ -126,7 +126,7 @@ func buildPatchState(patch Patch, schema *Schema) (error, *patchState, *Path) {
 		if attr := schema.GetAttribute(path, true); attr != nil {
 			ps.destAttr = attr
 		} else {
-			return fmt.Errorf("No attribute found for path: %s", patch.Path), nil, nil
+			return fmt.Errorf("no attribute found for path: %s", patch.Path), nil, nil
 		}
 	}
 
@@ -324,11 +324,11 @@ func (ps *patchState) applyPatchRemove(p Path, subj *Resource) {
 				case reflect.Map:
 					elemVal.SetMapIndex(keyVal, reflect.Value{})
 				default:
-					ps.throw(fmt.Errorf("Array base contains non-map: %s", ps.patch.Path))
+					ps.throw(fmt.Errorf("array base contains non-map: %s", ps.patch.Path))
 				}
 			}
 		default:
-			ps.throw(fmt.Errorf("Base evaluated to non-map and non-array: %s", ps.patch.Path))
+			ps.throw(fmt.Errorf("base evaluated to non-map and non-array: %s", ps.patch.Path))
 		}
 	}
 }
@@ -360,7 +360,7 @@ func (ps *patchState) applyPatchReplace(p Path, v reflect.Value, subj *Resource)
 func (ps *patchState) applyPatchAdd(p Path, v reflect.Value, subj *Resource) {
 	if p == nil {
 		if v.Kind() != reflect.Map {
-			ps.throw(fmt.Errorf("Invalid parameter for add operation"))
+			ps.throw(fmt.Errorf("invalid parameter for add operation"))
 		}
 		for _, k := range v.MapKeys() {
 			v0 := v.MapIndex(k)
@@ -392,9 +392,16 @@ func (ps *patchState) applyPatchAdd(p Path, v reflect.Value, subj *Resource) {
 
 			switch baseVal.Kind() {
 			case reflect.Map:
+				// 全体や、Complexな値が指定されたとき
+				// keyVal := "emails"
 				keyVal := reflect.ValueOf(lastPath.Base())
 				if ps.destAttr.MultiValued {
+					// 複数属性であれば、ベースとなるMapから値を取ってくる
 					origVal := baseVal.MapIndex(keyVal)
+
+					// なければ設定する
+					// Array, Sliceであればそのまま設定可能
+					// そうでなければ、0番目の要素として追加しないと、型が壊れる
 					if !origVal.IsValid() {
 						switch v.Kind() {
 						case reflect.Array, reflect.Slice:
@@ -402,16 +409,19 @@ func (ps *patchState) applyPatchAdd(p Path, v reflect.Value, subj *Resource) {
 						default:
 							baseVal.SetMapIndex(keyVal, reflect.ValueOf([]interface{}{v.Interface()}))
 						}
+					// あれば追加をする
 					} else {
 						if origVal.Kind() == reflect.Interface {
 							origVal = origVal.Elem()
 						}
 						var newArr MultiValued
 						switch v.Kind() {
+						// Array, Sliceであれば中身を詰めてMergeする
 						case reflect.Array, reflect.Slice:
 							for i := 0; i < v.Len(); i++ {
 								newArr = MultiValued(origVal.Interface().([]interface{})).Add(v.Index(i).Interface())
 							}
+						// そうでなければ、0番目の要素として追加しないと、型が壊れる
 						default:
 							newArr = MultiValued(origVal.Interface().([]interface{})).Add(v.Interface())
 						}
@@ -421,6 +431,7 @@ func (ps *patchState) applyPatchAdd(p Path, v reflect.Value, subj *Resource) {
 					baseVal.SetMapIndex(keyVal, v)
 				}
 			case reflect.Array, reflect.Slice:
+				// MultiValuedな値が指定されたとき
 				for i := 0; i < baseVal.Len(); i++ {
 					elemVal := baseVal.Index(i)
 					if elemVal.Kind() == reflect.Interface {
@@ -430,7 +441,7 @@ func (ps *patchState) applyPatchAdd(p Path, v reflect.Value, subj *Resource) {
 					case reflect.Map:
 						elemVal.SetMapIndex(reflect.ValueOf(lastPath.Base()), v)
 					default:
-						ps.throw(fmt.Errorf("Array base contains non-map: %s", ps.patch.Path))
+						ps.throw(fmt.Errorf("array base contains non-map: %s", ps.patch.Path))
 					}
 				}
 			default:
